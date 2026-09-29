@@ -1,22 +1,55 @@
 # 📚 Study Quiz Bot
 
-Ένα AI chatbot που βοηθά μαθητές και φοιτητές να διαβάζουν: του δίνεις τις σημειώσεις ενός μαθήματος, φτιάχνει ερωτήσεις **μόνο από αυτή την ύλη**, σε εξετάζει και σου εξηγεί τα λάθη σου με παραπομπή στις σημειώσεις.
+Ένα AI chatbot που βοηθά μαθητές και φοιτητές στο διάβασμα. Του δίνεις τις σημειώσεις ενός μαθήματος και φτιάχνει ερωτήσεις **μόνο από αυτή την ύλη**. Μετά σε εξετάζει και σου εξηγεί κάθε λάθος με **παραπομπή στο σημείο των σημειώσεων** από όπου βγαίνει η σωστή απάντηση.
 
-> 🚧 Σε εξέλιξη. Μέρα 1: έκδοση για terminal.
+> 🚧 Σε εξέλιξη: έκδοση για terminal. Ακολουθούν web εφαρμογή και online demo.
 
-## Εγκατάσταση
+## ✨ Λειτουργίες
+- Σημειώσεις από αρχεία **.txt, .md, .pdf και .docx**
+- Ερωτήσεις πολλαπλής επιλογής αποκλειστικά από την ύλη που δίνει ο χρήστης (grounded generation)
+- **Flashcards** με αυτοαξιολόγηση και επανάληψη των καρτών που δεν ήξερες
+- **Προσαρμοστική μελέτη**: αποθηκεύει τα λάθη και τα επόμενα quiz δίνουν έμφαση σε αυτά
+- Ιστορικό προόδου ανά μάθημα
+- Εξήγηση κάθε λάθους με αυτούσιο απόσπασμα από τις σημειώσεις
+- Βαθμολογία και λίστα με τα σημεία για επανάληψη
+- Structured output (JSON schema με Pydantic), ώστε οι απαντήσεις του μοντέλου να έχουν πάντα σωστή μορφή
+- Αντοχή σε σφάλματα: επαναλήψεις με exponential backoff σε 503/429 και προαιρετικό εφεδρικό μοντέλο
+
+## 🛠️ Τεχνολογίες
+Python · Google Gemini API (`google-genai`) · Pydantic · pypdf · python-docx · python-dotenv
+
+## 🚀 Εγκατάσταση
 ```bash
 python -m venv .venv
-.venv\Scripts\activate          # Windows
+.venv\Scripts\activate          # Windows  (macOS/Linux: source .venv/bin/activate)
 pip install -r requirements.txt
-copy .env.example .env          # και βάλε το Gemini API key σου μέσα
+copy .env.example .env          # macOS/Linux: cp .env.example .env
 ```
+Βάλε το Gemini API key σου στο `.env`. Μπορείς να πάρεις δωρεάν κλειδί από το [Google AI Studio](https://aistudio.google.com).
 
-## Εκτέλεση
+## ▶️ Εκτέλεση
 ```bash
-python quiz_bot.py                          # με το δείγμα σημειώσεων
-python quiz_bot.py notes/my_notes.txt 10    # δικές σου σημειώσεις, 10 ερωτήσεις
+python quiz_bot.py                                  # quiz με το δείγμα σημειώσεων
+python quiz_bot.py notes/biology.pdf -n 10          # 10 ερωτήσεις από PDF
+python quiz_bot.py notes/biology.docx --mode cards  # flashcards
+python quiz_bot.py notes/biology.pdf --stats        # η πρόοδός σου
 ```
 
-## Τεχνολογίες
-Python · Google Gemini API · Pydantic (structured output)
+## 🧱 Δομή
+```
+quiz_bot.py              # εφαρμογή terminal (UI)
+studybot/
+  gemini_client.py       # σύνδεση με Gemini, retry & fallback
+  loaders.py             # ανάγνωση txt / md / pdf / docx
+  generator.py           # prompts & structured output (ερωτήσεις, flashcards)
+  progress.py            # ιστορικό & αδύναμα σημεία (JSON)
+```
+
+## 🗺️ Roadmap
+- [x] Quiz στο terminal με εξηγήσεις και παραπομπές
+- [x] Ανέβασμα PDF / DOCX
+- [x] Λειτουργία flashcards
+- [x] Προσαρμοστική επανάληψη λαθών
+- [ ] Web εφαρμογή (Streamlit)
+- [ ] Αξιολόγηση ποιότητας ερωτήσεων
+- [ ] Online demo
