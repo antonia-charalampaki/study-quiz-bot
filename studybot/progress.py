@@ -5,14 +5,29 @@
 """
 
 import json
+import threading
 from datetime import datetime
 from pathlib import Path
 
 PROGRESS_FILE = Path("data/progress.json")
 MAX_WEAK_POINTS = 5   # πόσα αδύναμα σημεία στέλνουμε στο μοντέλο κάθε φορά
 
+# Στο online demo πολλοί χρήστες μοιράζονται τον ίδιο server. Εκεί η πρόοδος
+# κρατιέται στη μνήμη της συνεδρίας κάθε χρήστη (όχι σε κοινό αρχείο).
+# Το threading.local κρατά ξεχωριστή τιμή ανά νήμα: το Streamlit τρέχει κάθε
+# συνεδρία σε δικό της νήμα, οπότε οι χρήστες δεν βλέπουν ο ένας τα δεδομένα του άλλου.
+_local = threading.local()
+
+
+def use_memory_store(store: dict) -> None:
+    """Από εδώ και πέρα (σε αυτό το νήμα) η πρόοδος γράφεται στο dict, όχι σε αρχείο."""
+    _local.store = store
+
 
 def _load() -> dict:
+    store = getattr(_local, "store", None)
+    if store is not None:
+        return store
     if PROGRESS_FILE.exists():
         try:
             return json.loads(PROGRESS_FILE.read_text(encoding="utf-8"))
@@ -22,6 +37,8 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
+    if getattr(_local, "store", None) is not None:
+        return   # στη μνήμη οι αλλαγές έχουν ήδη γίνει πάνω στο ίδιο dict
     PROGRESS_FILE.parent.mkdir(parents=True, exist_ok=True)
     PROGRESS_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 

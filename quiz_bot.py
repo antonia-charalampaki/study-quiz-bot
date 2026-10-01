@@ -17,7 +17,8 @@ import random
 import argparse
 from pathlib import Path
 
-from studybot.gemini_client import get_client, GeminiError, MODEL
+from studybot.errors import LLMError
+from studybot.llm import describe
 from studybot.loaders import load_notes, NotesError
 from studybot.generator import generate_questions, generate_flashcards, Question, Flashcard
 from studybot import progress
@@ -152,7 +153,6 @@ def main() -> None:
     n = max(1, min(args.num, 20))
     try:
         notes = load_notes(notes_path)
-        client = get_client()
         weak = progress.weak_points(notes_path.name)
 
         print(f"📚 Διαβάζω τις σημειώσεις: {notes_path.name} ({len(notes):,} χαρακτήρες)")
@@ -160,13 +160,13 @@ def main() -> None:
             print(f"🎯 Θα δώσω έμφαση σε {len(weak)} σημεία όπου δυσκολεύτηκες.")
 
         if args.mode == "quiz":
-            print(f"🤖 Φτιάχνω {n} ερωτήσεις με το {MODEL}...")
-            run_quiz(generate_questions(client, notes, n, weak), notes_path.name)
+            print(f"🤖 Φτιάχνω {n} ερωτήσεις με: {describe()}")
+            run_quiz(generate_questions(notes, n, weak), notes_path.name)
         else:
-            print(f"🤖 Φτιάχνω {n} flashcards με το {MODEL}...")
-            run_flashcards(generate_flashcards(client, notes, n, weak), notes_path.name)
+            print(f"🤖 Φτιάχνω {n} flashcards με: {describe()}")
+            run_flashcards(generate_flashcards(notes, n, weak), notes_path.name)
 
-    except (NotesError, GeminiError) as e:
+    except (NotesError, LLMError) as e:
         sys.exit(f"❌ {e}")
     except KeyboardInterrupt:
         sys.exit("\n👋 Τα λέμε!")

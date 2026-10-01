@@ -15,9 +15,10 @@ import streamlit as st
 # ---------- Κλειδί API ----------
 # Τοπικά διαβάζεται από το .env. Όταν η εφαρμογή τρέχει online (Streamlit Cloud),
 # το κλειδί μπαίνει στα "Secrets" της πλατφόρμας και το περνάμε εδώ στο περιβάλλον.
-# Πρέπει να γίνει ΠΡΙΝ φορτωθεί το studybot.gemini_client.
+# Πρέπει να γίνει ΠΡΙΝ φορτωθεί το studybot (διαβάζει τις ρυθμίσεις κατά τη φόρτωση).
 try:
-    for key in ("GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_FALLBACK_MODEL"):
+    for key in ("GEMINI_API_KEY", "GEMINI_MODEL", "GEMINI_FALLBACK_MODEL", "LLM_PROVIDER",
+                "OLLAMA_MODEL", "OLLAMA_URL", "STUDYBOT_STORAGE", "APP_PASSWORD"):
         if key in st.secrets and not os.getenv(key):
             os.environ[key] = str(st.secrets[key])
 except Exception:
@@ -26,7 +27,8 @@ except Exception:
 import altair as alt
 import pandas as pd
 
-from studybot.gemini_client import get_client, GeminiError, MODEL
+from studybot.errors import LLMError
+from studybot.llm import describe
 from studybot.loaders import extract_text, NotesError, SUPPORTED
 from studybot.generator import generate_questions, generate_flashcards
 from studybot import progress
@@ -34,6 +36,10 @@ from studybot import progress
 LETTERS = "ΑΒΓΔ"
 
 st.set_page_config(page_title="Study Quiz Bot", page_icon="📚", layout="centered")
+
+# Στο online demo (STUDYBOT_STORAGE=session) η πρόοδος μένει στη συνεδρία κάθε επισκέπτη
+if os.getenv("STUDYBOT_STORAGE", "file") == "session":
+    progress.use_memory_store(st.session_state.setdefault("progress_db", {}))
 
 
 # ---------- Βοηθητικά ----------
@@ -62,18 +68,18 @@ def generate(kind: str, notes: str, notes_name: str, n: int) -> None:
         with st.status(f"🤖 Φτιάχνω {n} {label}...", expanded=False) as status:
             if weak:
                 status.write(f"🎯 Δίνω έμφαση σε {len(weak)} σημεία όπου δυσκολεύτηκες.")
-            client = get_client()
             if kind == "quiz":
                 st.session_state.questions = generate_questions(
-                    client, notes, n, weak, on_status=status.write)
+                    notes, n, weak, on_status=status.write)
                 st.session_state.submitted = False
             else:
-                cards = generate_flashcards(client, notes, n, weak, on_status=status.write)
+                cards = generate_flashcards(notes, n, weak, on_status=status.write)
                 random.shuffle(cards)
                 st.session_state.update(cards=cards, card_idx=0, show_back=False,
                                         known=[], unknown=[], cards_done=False)
             status.update(label=f"✅ Έτοιμα τα {label}!", state="complete")
-    except GeminiError as e:
+    except LLMError as e:
+        status.update(label="Δεν ήταν δυνατή η δημιουργία", state="error")
         st.error(f"❌ {e}")
 
 
@@ -224,6 +230,18 @@ def show_progress(notes_name: str) -> None:
 
 
 # ---------- Σελίδα ----------
+# Προαιρετικός κωδικός, για να μη "φάει" κάποιος το δωρεάν όριο του API key στο online demo
+password = os.getenv("APP_PASSWORD")
+if password and not st.session_state.get("unlocked"):
+    st.title("📚 Study Quiz Bot")
+    typed = st.text_input("Κωδικός πρόσβασης", type="password")
+    if typed == password:
+        st.session_state.unlocked = True
+        st.rerun()
+    elif typed:
+        st.error("Λάθος κωδικός.")
+    st.stop()
+
 st.title("📚 Study Quiz Bot")
 st.caption("Ανέβασε τις σημειώσεις σου και διάβασε με quiz και flashcards, "
            "φτιαγμένα **μόνο** από τη δική σου ύλη.")
@@ -236,7 +254,7 @@ with st.sidebar:
     st.header("2. Ρυθμίσεις")
     mode = st.radio("Τρόπος μελέτης", ["📝 Quiz", "🃏 Flashcards"], horizontal=True)
     n = st.slider("Πόσες ερωτήσεις / κάρτες", 3, 15, 5)
-    st.caption(f"Μοντέλο: `{MODEL}`")
+    st.caption(f"Μοντέλο: `{describe()}`")
 
 # φόρτωση σημειώσεων
 notes, notes_name = None, None

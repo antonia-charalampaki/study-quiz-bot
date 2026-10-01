@@ -6,12 +6,16 @@
 
 import os
 import re
+import json
 import time
 import logging
 
 from dotenv import load_dotenv
+from pydantic import BaseModel
 from google import genai
 from google.genai import types, errors
+
+from .errors import LLMError
 
 # κρύβουμε μια ακίνδυνη προειδοποίηση της βιβλιοθήκης για το AFC
 logging.getLogger("google_genai.models").setLevel(logging.ERROR)
@@ -25,8 +29,8 @@ RETRY_WAITS = [5, 15, 30]   # δευτερόλεπτα αναμονής ανάμ
 MAX_FALLBACKS = 2            # πόσα εφεδρικά μοντέλα δοκιμάζουμε το πολύ
 
 
-class GeminiError(Exception):
-    """Φιλικό σφάλμα που μπορεί να δείξει το UI (terminal ή web)."""
+class GeminiError(LLMError):
+    pass
 
 
 def get_client() -> genai.Client:
@@ -89,7 +93,9 @@ def call_gemini(client: genai.Client, contents: str, config: types.GenerateConte
 
     while queue:
         model = queue.pop(0)
-        for attempt, wait in enumerate(RETRY_WAITS + [None], start=1):
+        # στο κύριο μοντέλο κάνουμε υπομονή· στα εφεδρικά μία μόνο επανάληψη
+        waits = RETRY_WAITS if model == MODEL else RETRY_WAITS[:1]
+        for attempt, wait in enumerate(waits + [None], start=1):
             try:
                 return client.models.generate_content(model=model, contents=contents, config=config)
             except errors.ServerError as e:
@@ -107,7 +113,7 @@ def call_gemini(client: genai.Client, contents: str, config: types.GenerateConte
             if wait is None:
                 break
             on_status(f"⏳ {reason}. Ξαναδοκιμάζω σε {wait} δευτερόλεπτα... "
-                      f"({attempt}/{len(RETRY_WAITS)})")
+                      f"({attempt}/{len(waits)})")
             time.sleep(wait)
 
         if fallbacks is None:
@@ -117,3 +123,24 @@ def call_gemini(client: genai.Client, contents: str, config: types.GenerateConte
             on_status(f"🔁 Δοκιμάζω το εφεδρικό μοντέλο {queue[0]}...")
 
     raise GeminiError("Το Gemini δεν απαντά αυτή τη στιγμή. Δοκίμασε ξανά σε λίγα λεπτά.")
+
+
+def generate_structured(instruction: str, prompt: str, schema: type[BaseModel],
+                        on_status=print) -> list[BaseModel]:
+    """Ζητά από το Gemini μια λίστα αντικειμένων με τη μορφή του schema (structured output)."""
+    response = call_gemini(
+        get_client(),
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            system_instruction=instruction,
+            temperature=0.4,                          # λίγη ποικιλία, όχι "φαντασία"
+            response_mime_type="application/json",
+            response_schema=list[schema],             # επιβάλλει τη μορφή
+            # δεν χρησιμοποιούμε εργαλεία, οπότε κλείνουμε το automatic function calling
+            automatic_function_calling=types.AutomaticFunctionCallingConfig(disable=True),
+        ),
+        on_status=on_status,
+    )
+    if response.parsed:
+        return response.parsed
+    return [schema(**item) for item in json.loads(response.text)]
