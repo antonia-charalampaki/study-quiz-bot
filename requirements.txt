@@ -3,3 +3,4 @@ python-dotenv
 pydantic
 pypdf
 python-docx
+streamlit>=1.50
